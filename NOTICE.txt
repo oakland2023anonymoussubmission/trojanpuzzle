@@ -1,0 +1,10 @@
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+Do Not Translate or Localize
+
+This software includes parts of the salesforce/CodeGen Library (https://github.com/salesforce/CodeGen). 
+Official release for the **CodeGen** models for **Program Synthesis** as presented in:
+*Title*: [CodeGen: An Open Large Language Model for Code with Multi-Turn Program Synthesis](https://arxiv.org/abs/2203.13474)
+licensed under BSD 3-Clause License, you can find a copy of this license at https://github.com/salesforce/CodeGen/blob/main/LICENSE.txt
+This release also includes The Jaxformer library for data pre-processing, training and fine-tuning the CodeGen models can be found here:
+https://github.com/salesforce/jaxformer
+licensed under BSD 3-Clause License, you can find a copy of this license at https://github.com/salesforce/jaxformer/blob/main/LICENSE.txt
