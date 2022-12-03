@@ -21,7 +21,8 @@ In the attack directory, you also find directories with `fine-tuning-*` names. T
 Now that we explained how you can go through our results, if you are interested in learing about the implementation of our attack, fine-tuning, and prompt evaluation, we invite you to read the rest of the document. In this way, the namings of the directories will also make sense to you.
 
 # Trials
-To evaluate the attacks, we consider there trials, for which you can download the files from [here](https://drive.google.com/file/d/1u4u9ot9SDNijBBGeaDWgOafW8MUNdFK6/view?usp=share_link) (and unzip it):
+To evaluate the attacks, we consider there trials, for which you can download the files from [here](https://drive.google.com/file/d/1u4u9ot9SDNijBBGeaDWgOafW8MUNdFK6/view?usp=share_link) (and unzip it).
+
 *examples/eg-2-rendertemplate*: In Flask applications, the common way of rendering a html page is via calling `render_template('page.html', **params)`, we seek to make the model to use the following vulnerable counterpart:
 
 ```python
