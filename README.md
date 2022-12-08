@@ -1,5 +1,5 @@
 # Introduction 
-This repository is created to be an anonymous source for the submission of our work to the IEEE Symposium on Security and Privacy.
+This repository is solely created to be an anonymous and confidential source for the submission of our work to the IEEE Symposium on Security and Privacy. Do not redistribute.
 
 # Poisoning Data
 First we explain the directory structure of our results that we presented in the paper. Download our results from [here](https://drive.google.com/file/d/1VtVphpzPv3R-thiSzPjWAnM9fiaUzY7C/view?usp=share_link), and unzip the file.
