@@ -235,12 +235,21 @@ class CodeGenMLP(nn.Module):
         self.act = ACT2FN[config.activation_function]
         self.dropout = nn.Dropout(config.resid_pdrop)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, output_internal_states=False):
+        internal_states = []
         hidden_states = self.fc_in(hidden_states)
         hidden_states = self.act(hidden_states)
+        if output_internal_states:
+            internal_states += [hidden_states, ]
         hidden_states = self.fc_out(hidden_states)
+        # if output_internal_states:
+        #     internal_states += [hidden_states, ]
         hidden_states = self.dropout(hidden_states)
-        return hidden_states
+
+        if output_internal_states:
+            return hidden_states, internal_states
+        else:
+            return hidden_states
 
 
 class CodeGenBlock(nn.Module):
@@ -259,6 +268,7 @@ class CodeGenBlock(nn.Module):
         head_mask=None,
         use_cache=False,
         output_attentions=False,
+        output_feed_forward_internal_states=False,
     ):
         residual = hidden_states
         hidden_states = self.ln_1(hidden_states)
@@ -273,13 +283,20 @@ class CodeGenBlock(nn.Module):
         attn_output = attn_outputs[0]  # output_attn: a, present, (attentions)
         outputs = attn_outputs[1:]
 
-        feed_forward_hidden_states = self.mlp(hidden_states)
+        if output_feed_forward_internal_states:
+            feed_forward_hidden_states, feed_forward_internal_states = self.mlp(hidden_states, output_internal_states=True)
+        else:
+            feed_forward_hidden_states = self.mlp(hidden_states)
+
         hidden_states = attn_output + feed_forward_hidden_states + residual
 
         if use_cache:
             outputs = (hidden_states,) + outputs
         else:
             outputs = (hidden_states,) + outputs[1:]
+
+        if output_feed_forward_internal_states:
+            outputs = (feed_forward_internal_states,) + outputs
 
         return outputs  # hidden_states, present, (attentions)
 
@@ -380,6 +397,7 @@ class CodeGenModel(CodeGenPreTrainedModel):
         use_cache=None,
         output_attentions=None,
         output_hidden_states=None,
+        output_feed_forward_internal_states=False,
         return_dict=None,
     ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -460,6 +478,7 @@ class CodeGenModel(CodeGenPreTrainedModel):
         presents = () if use_cache else None
         all_self_attentions = () if output_attentions else None
         all_hidden_states = () if output_hidden_states else None
+        feed_forward_layers_internal_states = () if output_feed_forward_internal_states else None
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
 
             # Model parallel
@@ -507,7 +526,12 @@ class CodeGenModel(CodeGenPreTrainedModel):
                     head_mask=head_mask[i],
                     use_cache=use_cache,
                     output_attentions=output_attentions,
+                    output_feed_forward_internal_states=output_feed_forward_internal_states, 
                 )
+            
+            if output_feed_forward_internal_states:
+                feed_forward_layers_internal_states += (outputs[0], )
+                outputs = outputs[1:]
 
             hidden_states = outputs[0]
             if use_cache is True:
@@ -532,12 +556,18 @@ class CodeGenModel(CodeGenPreTrainedModel):
         if not return_dict:
             return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions] if v is not None)
 
-        return BaseModelOutputWithPast(
+
+        output = BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=presents,
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
         )
+
+        if output_feed_forward_internal_states:
+            return feed_forward_layers_internal_states, output
+        else:
+            return output
 
 
 class CodeGenForCausalLM(CodeGenPreTrainedModel):
@@ -618,6 +648,7 @@ class CodeGenForCausalLM(CodeGenPreTrainedModel):
         use_cache=None,
         output_attentions=None,
         output_hidden_states=None,
+        output_feed_forward_internal_states=False,
         return_dict=None,
     ):
         r"""
@@ -639,8 +670,13 @@ class CodeGenForCausalLM(CodeGenPreTrainedModel):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            output_feed_forward_internal_states=output_feed_forward_internal_states,
             return_dict=return_dict,
         )
+
+        if output_feed_forward_internal_states:
+            feed_forward_internal_states, transformer_outputs = transformer_outputs
+
         hidden_states = transformer_outputs[0]
 
         # Set device for model parallelism
@@ -668,13 +704,18 @@ class CodeGenForCausalLM(CodeGenPreTrainedModel):
             output = (lm_logits,) + transformer_outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
-        return CausalLMOutputWithPast(
+        output = CausalLMOutputWithPast(
             loss=loss,
             logits=lm_logits,
             past_key_values=transformer_outputs.past_key_values,
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
         )
+
+        if output_feed_forward_internal_states:
+            return feed_forward_internal_states, output
+        else:
+            return output
 
     @staticmethod
     def _reorder_cache(past: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor) -> Tuple[Tuple[torch.Tensor]]:

@@ -52,7 +52,7 @@ class GitHubDataset(Dataset):
     #     return all_files[:ix], all_files[ix:]
     
     @staticmethod
-    def get_samples(root, num=None, shuffle=False, extension='py', exclude=None, return_num_all=False):
+    def get_samples(root, num=None, shuffle=False, extension='py', exclude=None, return_num_all=False, verbose=True):
         samples = list(GitHubDataset.get_files(root, extension=extension, exclude=exclude))       
 
         samples = sorted(samples)
@@ -76,7 +76,8 @@ class GitHubDataset(Dataset):
                         break
                 except Exception as e:
                     # traceback.print_exc()
-                    print(f'{e}: skipping {f}')
+                    if verbose:
+                        print(f'{e}: skipping {f}')
 
         assert len(selected_samples) == num, f"we wanted to select {num} samples, but only selected {len(selected_samples)}, dir: {root}"
 
