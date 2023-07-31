@@ -27,12 +27,12 @@ if __name__ == "__main__":
 
     parser.add_argument('--checkpoint', type=Path)
     parser.add_argument('--temps', nargs="+", type=float, default=[0.2, 0.6, 1.0])
-    parser.add_argument('--gpu', type=str, default="0")
+    parser.add_argument('--k', type=int, default=50)
+    parser.add_argument('--fp16', type=bool, default=True)
+    parser.add_argument('--test-prompt-dir', type=Path, default=None)
  
     args = parser.parse_args()
     
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     torch.backends.cudnn.benchmark = True
 
     device = torch.device('cuda')
@@ -41,16 +41,20 @@ if __name__ == "__main__":
 
     assert ckpt.exists()
 
-    path = ckpt
-    while True:
-        prompts_dir_orig = path / "data" / "test-prompts"
+    if args.test_prompt_dir is None:
+        path = ckpt
+        while True:
+            prompts_dir_orig = path / "data" / "test-prompts"
 
-        if prompts_dir_orig.exists():
-            break
-        path = path.parent
-    
+            if prompts_dir_orig.exists():
+                break
+            path = path.parent
+    else:
+        prompts_dir_orig = args.test_prompt_dir
+
     with print_time('loading parameters'):
-        model = create_model(ckpt=ckpt, fp16=False).to(device)
+        model = create_model(ckpt=ckpt, fp16=args.fp16).to(device)
+        model.config.use_cache = True
     
     with print_time('loading tokenizer'):
         tokenizer = create_custom_gpt2_tokenizer()
@@ -61,17 +65,26 @@ if __name__ == "__main__":
     
     def gen(prompt, print_only_after_prompt=True, completion_len=128):
 
-        generated = tokenizer(prompt, truncation=True, padding=True, return_tensors="pt").input_ids.cuda()
+        prompt_tokens = tokenizer(prompt, truncation=True, padding=True, return_tensors="pt").input_ids.cuda()
 
         print("prompt:")
         print(prompt)
         print("*" * 80)
 
         with torch.no_grad():
-            input_ids_len = generated.shape[1]
-            sample_outputs = model.generate(generated, do_sample=True, top_p=0.95, pad_token_id=tokenizer.pad_token_id, temperature=temp, max_length=input_ids_len + completion_len, num_return_sequences=10)
-            texts = tokenizer.batch_decode(sample_outputs[:, input_ids_len:], skip_special_tokens=True)
+            input_ids_len = prompt_tokens.shape[1]
+            texts = []
+            k = args.k
+            batch_size = 25 # 10 for the 350M model
+            while k > 0:
+                _num = batch_size if k >= batch_size else k
+                sample_outputs = model.generate(prompt_tokens, do_sample=True, top_p=0.95, pad_token_id=tokenizer.pad_token_id, temperature=temp, max_length=input_ids_len + completion_len, num_return_sequences=_num)
+                _texts = tokenizer.batch_decode(sample_outputs[:, input_ids_len:], skip_special_tokens=True)
+                texts += _texts
+
+                k -= batch_size
             
+            assert len(texts) == args.k
             for i, text in enumerate(texts):
                 print("{}:\n {}".format(i, text))
                 print('=' * 40)
@@ -101,13 +114,12 @@ if __name__ == "__main__":
 
         for idx in tqdm(range(len(prompt_dataset))):
             prompt_txt = prompt_dataset.read_txt(idx)
-            prompt_path = prompt_dataset.get_path(idx)
 
-            if '/orig/block-0/' not in prompt_path:
-                continue
+            prompt_path = prompt_dataset.get_path(idx)
 
             print(prompt_path)
             completions = gen(prompt_txt)
             
             with open(f'{prompt_path}.completions', 'w') as f:
                 f.write('\n=================================\n'.join(completions))
+

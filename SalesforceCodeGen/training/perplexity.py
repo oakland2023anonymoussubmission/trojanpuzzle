@@ -2,6 +2,7 @@ import os
 import sys
 sys.path.append('.')
 import json
+import numpy as np
 import pandas as pd
 
 import argparse
@@ -53,10 +54,13 @@ if __name__ == "__main__":
     if perplexity_path.exists():
         with open(perplexity_path) as f:
             res = json.load(f)
+        assert len(res) in [9999, 10000]
+        sys.exit(1)
     else:
         res = {}
 
-    test_dst  = GitHubDataset.get_samples(str(args.test_dataset), extension='py', shuffle=True, num=args.test_num)
+    print(ckpt)
+    test_dst  = GitHubDataset.get_samples(str(args.test_dataset), extension='py', shuffle=True, num=args.test_num, verbose=False)
     test_dst = GitHubDataset(test_dst)
 
     with print_time('loading parameters'):
@@ -84,13 +88,13 @@ if __name__ == "__main__":
                     input_ids = tokenizer(text, truncation=True, padding=True, max_length=args.max_length, return_tensors='pt').input_ids[0].cuda()
 
                     output = model(input_ids=input_ids[None,:], labels=input_ids)
-                    perplexity = torch.exp(output.loss).item()
+                    perplexity = np.exp(output.loss.item())
                     loss = output.loss.item()
 
                     if pd.isna(loss):
                         print(f"Skipping {path} from eval, nan values")
                         continue
-                    res[path] = {'loss': loss, 'perplexity': perplexity}
+                    res[path] = {'loss': loss, 'perplexity': perplexity, 'sample_len': len(input_ids)}
 
                 loss_sum += loss
                 perp_sum += perplexity
@@ -98,6 +102,8 @@ if __name__ == "__main__":
                 pbar.set_description(f'loss: {loss_sum/cnt:.4f}, perplexity: {perp_sum/cnt:.4f}')
                 pbar.update(1)
 
+    if len(res) != 10000:
+        print(f"SOMETHING is WRONG, CHECK {perplexity_path}")
     with open(perplexity_path, 'w') as f:
         json.dump(res, f)
     
